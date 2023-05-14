@@ -8,9 +8,18 @@ include_directories(
 	include
 )
 
+include(FetchContent)
+FetchContent_Declare(
+  polyscope
+  GIT_REPOSITORY https://github.com/nmwsharp/polyscope.git
+  GIT_TAG master
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE)
+FetchContent_MakeAvailable(polyscope)
+
 # find source codes
 # Add source files
-file(GLOB_RECURSE SOURCE_FILES 
+file(GLOB_RECURSE SOURCE_FILES
     src/*.cpp
     head/*.h
     src/**/*.cpp
@@ -20,3 +29,4 @@ if(WIN32)
 add_definitions(-D_AMD64_)
 endif()
 add_executable(subdivisions ${SOURCE_FILES})
+target_link_libraries(subdivisions polyscope)

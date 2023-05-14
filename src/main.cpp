@@ -1,50 +1,61 @@
 ﻿#include "obj_mesh.h"
 #include "subdivision.h"
-int main()
+
+#include "polyscope/surface_mesh.h"
+
+Doosabin2Subdivision doosabin_;
+
+std::vector<std::vector<int>> transform_faces(obj_mesh mesh){
+    std::vector<std::vector<int>> F;
+    for (auto f : mesh.faces){
+        std::vector<int> face;
+        for (auto vi : f) face.push_back(vi.v_idx);
+        F.push_back(face);
+    }
+    return F;
+}
+
+void myCallback() {
+    ImGui::PushItemWidth(100); 
+
+    ImGui::PopItemWidth();
+
+    if (ImGui::Button("Doo-Sabin Subdivision Step")) {
+        // executes when button is pressed
+        // mySubroutine();
+        obj_mesh mesh = doosabin_.execute(1);
+        std::vector<std::vector<int>> F = transform_faces(mesh);
+        polyscope::registerSurfaceMesh("Mesh", mesh.positions, F);
+    }
+
+}
+
+int main(int argc, char *argv[])
 {
-	obj_mesh tetrahedron;
-	loadObj("models/tetrahedron.obj", tetrahedron);
-	
-	obj_mesh cube;
-	loadObj("models/cube_quad.obj", cube);
-	
-	obj_mesh cube_tri;
-	loadObj("models/cube_tri.obj", cube_tri);
 
-	std::string OUT_PATH = "output/";
+    obj_mesh mesh;
+    std::string mesh_path = "../models/tetrahedron.obj";
+    if (argc > 1) mesh_path = argv[1];
+	loadObj(mesh_path, mesh);
 
-	LoopSubdivision loop;
-	loop.loadMesh(tetrahedron);
-	writeObj(OUT_PATH + "loop_tetrahedron_1.obj", loop.execute(1));
-	writeObj(OUT_PATH + "loop_tetrahedron_2.obj", loop.execute(1));
-	writeObj(OUT_PATH + "loop_tetrahedron_3.obj", loop.execute(1));
+	doosabin_.loadMesh(mesh);
 
-	loop.loadMesh(cube_tri);
-	writeObj(OUT_PATH + "loop_cube_tri_1.obj", loop.execute(1));
-	writeObj(OUT_PATH + "loop_cube_tri_2.obj", loop.execute(1));
-	writeObj(OUT_PATH + "loop_cube_tri_3.obj", loop.execute(1));
+    // -----------------------------
+    // --------- POLYSCOPE ---------
+    // -----------------------------
 
-	CatmullSubdivision catmull;
-	catmull.loadMesh(tetrahedron);
-	writeObj(OUT_PATH + "catmull_tetrahedron_1.obj", catmull.execute(1));
-	writeObj(OUT_PATH + "catmull_tetrahedron_2.obj", catmull.execute(1));
-	writeObj(OUT_PATH + "catmull_tetrahedron_3.obj", catmull.execute(1));
+    std::vector<std::vector<int>> F = transform_faces(mesh);
 
-	catmull.loadMesh(cube);
-	writeObj(OUT_PATH + "catmull_cube_quad_1.obj", catmull.execute(1));
-	writeObj(OUT_PATH + "catmull_cube_quad_2.obj", catmull.execute(1));
-	writeObj(OUT_PATH + "catmull_cube_quad_3.obj", catmull.execute(1));
+    polyscope::init();
+    polyscope::view::upDir = polyscope::UpDir::ZUp;
+    polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+    polyscope::options::shadowBlurIters = 6;
 
-	Doosabin2Subdivision doosabin;
-	doosabin.loadMesh(tetrahedron);
-	writeObj(OUT_PATH + "doosabin_tetrahedron_1.obj", doosabin.execute(1));
-	writeObj(OUT_PATH + "doosabin_tetrahedron_2.obj", doosabin.execute(1));
-	writeObj(OUT_PATH + "doosabin_tetrahedron_3.obj", doosabin.execute(1));
+    auto pc = polyscope::registerSurfaceMesh("Mesh", mesh.positions, F);
 
-	doosabin.loadMesh(cube);
-	writeObj(OUT_PATH + "doosabin_cube_quad_1.obj", doosabin.execute(1));
-	writeObj(OUT_PATH + "doosabin_cube_quad_2.obj", doosabin.execute(1));
-	writeObj(OUT_PATH + "doosabin_cube_quad_3.obj", doosabin.execute(1));
+    polyscope::state::userCallback = myCallback;
+
+    polyscope::show();
 
 	return 0;
 }
