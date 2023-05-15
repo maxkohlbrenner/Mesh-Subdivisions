@@ -83,8 +83,8 @@ private:
 	std::vector<doosabin2::face> faceList;
 protected:
 	void subdiv() override;
-	obj_mesh makeMesh() override;
 public:
+	obj_mesh makeMesh() override;
 	void loadMesh(obj_mesh & _obj) override;
 	//No more normal calculate;
 };

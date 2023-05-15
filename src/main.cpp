@@ -4,12 +4,17 @@
 #include "polyscope/surface_mesh.h"
 #include "polyscope/point_cloud.h"
 #include <igl/triangulated_grid.h>
+#include <igl/readOBJ.h>
 
 #include <Eigen/Dense>
 #include <glm/glm.hpp>
 #include "obj_mesh.h"
 
 Doosabin2Subdivision doosabin_;
+Eigen::MatrixXd Vr;
+Eigen::MatrixXi Fr;
+
+bool show_error = false;
 
 std::vector<std::vector<int>> transform_faces(obj_mesh mesh){
     std::vector<std::vector<int>> F;
@@ -41,6 +46,20 @@ void to_obj_mesh(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F, obj_mesh &_
     }
 }
 
+Eigen::VectorXd vertex_errors(const Eigen::MatrixXd &Vr, const obj_mesh &mesh) {
+    Eigen::VectorXd errors = Eigen::VectorXd::Zero(mesh.positions.size());
+
+    // Eigen::MatrixXd ref_test(1,3);
+    // ref_test.row(0) = Eigen::RowVector3d(mesh.positions[0][0],mesh.positions[0][1],mesh.positions[0][2]);
+    // for ( int i=0; i<5; i++) ref_test.row(i) = Eigen::RowVector3d(2.,0.,0.);
+    for (int i=0; i<mesh.positions.size(); i++) {
+        Eigen::Vector3d p(mesh.positions[i][0],mesh.positions[i][1],mesh.positions[i][2]);
+        errors[i] = (Vr.array().rowwise() - p.transpose().array()).rowwise().norm().minCoeff();
+        // errors[i] = (ref_test.array().rowwise() - p.transpose().array()).rowwise().norm().minCoeff();
+    }
+    return errors;
+}
+
 void myCallback() {
     ImGui::PushItemWidth(100); 
 
@@ -49,23 +68,39 @@ void myCallback() {
     if (ImGui::Button("Doo-Sabin Subdivision Step")) {
         obj_mesh mesh = doosabin_.execute(1);
         std::vector<std::vector<int>> F = transform_faces(mesh);
-        polyscope::registerSurfaceMesh("Do-Sabin Subdiv Surface", mesh.positions, F);
+        auto sds = polyscope::registerSurfaceMesh("Do-Sabin Subdiv Surface", mesh.positions, F);
+        if (show_error) {
+            Eigen::VectorXd err = vertex_errors(Vr, mesh);
+            sds->addVertexScalarQuantity("error", err)->setEnabled(true);
+        }
+    }
+
+    if (ImGui::Checkbox("Show Error" , &show_error)){
+        std::cout << "Show error: " << show_error << std::endl;
+        if (show_error) {
+            Eigen::VectorXd err = vertex_errors(Vr, doosabin_.makeMesh());
+            polyscope::getSurfaceMesh("Do-Sabin Subdiv Surface")->addVertexScalarQuantity("error", err)->setEnabled(true);
+        }
     }
 
 }
 
+
 int main(int argc, char *argv[])
 {
 
-    /*
     obj_mesh mesh;
     std::string mesh_path = "../models/tetrahedron.obj";
     if (argc > 1) mesh_path = argv[1];
 	loadObj(mesh_path, mesh);
 	doosabin_.loadMesh(mesh);
     std::vector<std::vector<int>> F = transform_faces(mesh);
-    */
 
+    if (argc > 2){
+        igl::readOBJ(argv[2],Vr,Fr);
+    }
+
+/*
     int n = 4;
     int m = 5;
     Eigen::MatrixXd CP(n*m,3);
@@ -90,6 +125,8 @@ int main(int argc, char *argv[])
 	doosabin_.loadMesh(mesh);
     std::vector<std::vector<int>> F = transform_faces(mesh);
 
+    */
+
     // -----------------------------
     // --------- POLYSCOPE ---------
     // -----------------------------
@@ -101,7 +138,11 @@ int main(int argc, char *argv[])
 
     auto pc = polyscope::registerSurfaceMesh("Do-Sabin Subdiv Surface", mesh.positions, F);
 
-    polyscope::registerSurfaceMesh("Control Mesh", CP, CPquads);
+    if (Vr.rows() > 0) {
+        polyscope::registerSurfaceMesh("Reference Surface", Vr, Fr);
+    }
+
+    // polyscope::registerSurfaceMesh("Control Mesh", CP, CPquads);
 
     polyscope::state::userCallback = myCallback;
 
