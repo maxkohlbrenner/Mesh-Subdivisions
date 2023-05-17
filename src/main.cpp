@@ -84,10 +84,13 @@ void myCallback() {
     const char* items[] = { "Doo-Sabin", "Catmull-Clarke"};
     static int item_current = 0;
 
+    bool update_mesh  = false;
+    bool recalc_error = false;
+
     if (ImGui::Combo("Subdivision Method", &item_current, items, IM_ARRAYSIZE(items))) {
-        if (item_current == 1) {
+        if (item_current == 0) {
             subdivision_ = new Doosabin2Subdivision();
-        } else if (item_current == 2) {
+        } else if (item_current == 1) {
             subdivision_ = new CatmullSubdivision();
         } else {
             std::cout << "Error: subdivison xethod out of range" << std::endl;
@@ -95,12 +98,13 @@ void myCallback() {
 
         mesh_cur = mesh_init;
         subdivision_->loadMesh(mesh_cur);
+        update_mesh = true;
+        if (show_error) {
+            recalc_error = true;
+        }
     }
     // ImGui::SameLine(); HelpMarker("Refer to the \"Combo\" section below for an explanation of the full BeginCombo/EndCombo API, and demonstration of various flags.\n");
 
-
-    bool update_mesh  = false;
-    bool recalc_error = false;
 
     if (ImGui::Button("Subdivide")) {
         mesh_cur = subdivision_->execute(1);
@@ -131,17 +135,15 @@ void myCallback() {
 int main(int argc, char *argv[])
 {
 
-    std::string mesh_path = "../models/tetrahedron.obj";
-    if (argc > 1) mesh_path = argv[1];
+    // load meshes
+    std::string mesh_path           = "../../g1-quad-beziers/spot_tobi/out.obj";
+    std::string reference_mesh_path = "../../g1-quad-beziers/spot_tobi/spot_final_tesselated.obj"; 
 	loadObj(mesh_path, mesh_init);
+    igl::readOBJ(reference_mesh_path,Vr,Fr);
 
     mesh_cur = mesh_init;
 	subdivision_->loadMesh(mesh_cur);
     std::vector<std::vector<int>> F = transform_faces(mesh_cur);
-
-    if (argc > 2){
-        igl::readOBJ(argv[2],Vr,Fr);
-    }
 
     polyscope::init();
     polyscope::view::upDir = polyscope::UpDir::ZUp;
