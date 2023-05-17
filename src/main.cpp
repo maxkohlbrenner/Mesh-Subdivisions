@@ -137,13 +137,20 @@ int main(int argc, char *argv[])
 
     // load meshes
     std::string mesh_path           = "../../g1-quad-beziers/spot_tobi/out.obj";
-    std::string reference_mesh_path = "../../g1-quad-beziers/spot_tobi/spot_final_tesselated.obj"; 
+    std::string reference_mesh_path = "../../g1-quad-beziers/spot_tobi/spot_tobi_cc5.obj"; 
+    std::string our_cp_mesh_path   =  "../../g1-quad-beziers/spot_tobi/out_ours.obj"; 
+
 	loadObj(mesh_path, mesh_init);
     igl::readOBJ(reference_mesh_path,Vr,Fr);
+
+    Eigen::MatrixXd Vours;
+    Eigen::MatrixXi Fours;
+    igl::readOBJ(our_cp_mesh_path,Vours,Fours);
 
     mesh_cur = mesh_init;
 	subdivision_->loadMesh(mesh_cur);
     std::vector<std::vector<int>> F = transform_faces(mesh_cur);
+    std::vector<std::vector<int>> F_init = transform_faces(mesh_init);
 
     polyscope::init();
     polyscope::view::upDir = polyscope::UpDir::ZUp;
@@ -151,10 +158,9 @@ int main(int argc, char *argv[])
     polyscope::options::shadowBlurIters = 6;
 
     auto pc = polyscope::registerSurfaceMesh("Subdivision Surface", mesh_cur.positions, F);
+    polyscope::registerSurfaceMesh("Reference Surface", Vr, Fr);
 
-    if (Vr.rows() > 0) {
-        polyscope::registerSurfaceMesh("Reference Surface", Vr, Fr);
-    }
+    polyscope::registerPointCloud("K-Surf Control Points", Vours);
 
     polyscope::state::userCallback = myCallback;
 
