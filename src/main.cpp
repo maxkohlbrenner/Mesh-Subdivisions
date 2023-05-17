@@ -10,7 +10,9 @@
 #include <glm/glm.hpp>
 #include "obj_mesh.h"
 
-Doosabin2Subdivision doosabin_;
+// Doosabin2Subdivision subdivision;
+Subdivision *doosabin_ = new Doosabin2Subdivision();
+
 Eigen::MatrixXd Vr;
 Eigen::MatrixXi Fr;
 
@@ -66,7 +68,7 @@ void myCallback() {
     ImGui::PopItemWidth();
 
     if (ImGui::Button("Doo-Sabin Subdivision Step")) {
-        obj_mesh mesh = doosabin_.execute(1);
+        obj_mesh mesh = doosabin_->execute(1);
         std::vector<std::vector<int>> F = transform_faces(mesh);
         auto sds = polyscope::registerSurfaceMesh("Do-Sabin Subdiv Surface", mesh.positions, F);
         if (show_error) {
@@ -78,7 +80,7 @@ void myCallback() {
     if (ImGui::Checkbox("Show Error" , &show_error)){
         std::cout << "Show error: " << show_error << std::endl;
         if (show_error) {
-            Eigen::VectorXd err = vertex_errors(Vr, doosabin_.makeMesh());
+            Eigen::VectorXd err = vertex_errors(Vr, doosabin_->makeMesh());
             polyscope::getSurfaceMesh("Do-Sabin Subdiv Surface")->addVertexScalarQuantity("error", err)->setEnabled(true);
         }
     }
@@ -93,7 +95,7 @@ int main(int argc, char *argv[])
     std::string mesh_path = "../models/tetrahedron.obj";
     if (argc > 1) mesh_path = argv[1];
 	loadObj(mesh_path, mesh);
-	doosabin_.loadMesh(mesh);
+	doosabin_->loadMesh(mesh);
     std::vector<std::vector<int>> F = transform_faces(mesh);
 
     if (argc > 2){

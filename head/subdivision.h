@@ -5,8 +5,8 @@
 class Subdivision {
     protected:
         virtual void subdiv() = 0; // do subdivision for once
-        virtual obj_mesh makeMesh() = 0; // give the obj mesh from data used for subdivisions
     public:
+        virtual obj_mesh makeMesh() = 0; // give the obj mesh from data used for subdivisions
         virtual void loadMesh(obj_mesh & _obj) = 0; // prepare data structure for subdivisions
         obj_mesh execute(unsigned int _times = 3) {
             for (unsigned int i = 0; i < _times; i += 1) {
