@@ -11,7 +11,8 @@
 #include "obj_mesh.h"
 
 // Doosabin2Subdivision subdivision;
-Subdivision *doosabin_ = new Doosabin2Subdivision();
+obj_mesh mesh_init, mesh_cur;
+Subdivision *subdivision_ = new Doosabin2Subdivision();
 
 Eigen::MatrixXd Vr;
 Eigen::MatrixXi Fr;
@@ -62,89 +63,96 @@ Eigen::VectorXd vertex_errors(const Eigen::MatrixXd &Vr, const obj_mesh &mesh) {
     return errors;
 }
 
+static void HelpMarker(const char* desc)
+{
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+    {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+        ImGui::TextUnformatted(desc);
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+}
+
 void myCallback() {
     ImGui::PushItemWidth(100); 
 
     ImGui::PopItemWidth();
 
-    if (ImGui::Button("Doo-Sabin Subdivision Step")) {
-        obj_mesh mesh = doosabin_->execute(1);
-        std::vector<std::vector<int>> F = transform_faces(mesh);
-        auto sds = polyscope::registerSurfaceMesh("Do-Sabin Subdiv Surface", mesh.positions, F);
+    const char* items[] = { "Doo-Sabin", "Catmull-Clarke"};
+    static int item_current = 0;
+
+    if (ImGui::Combo("Subdivision Method", &item_current, items, IM_ARRAYSIZE(items))) {
+        if (item_current == 1) {
+            subdivision_ = new Doosabin2Subdivision();
+        } else if (item_current == 2) {
+            subdivision_ = new CatmullSubdivision();
+        } else {
+            std::cout << "Error: subdivison xethod out of range" << std::endl;
+        }
+
+        mesh_cur = mesh_init;
+        subdivision_->loadMesh(mesh_cur);
+    }
+    // ImGui::SameLine(); HelpMarker("Refer to the \"Combo\" section below for an explanation of the full BeginCombo/EndCombo API, and demonstration of various flags.\n");
+
+
+    bool update_mesh  = false;
+    bool recalc_error = false;
+
+    if (ImGui::Button("Subdivide")) {
+        mesh_cur = subdivision_->execute(1);
+        update_mesh = true;
         if (show_error) {
-            Eigen::VectorXd err = vertex_errors(Vr, mesh);
-            sds->addVertexScalarQuantity("error", err)->setEnabled(true);
+            recalc_error = true;
         }
     }
 
     if (ImGui::Checkbox("Show Error" , &show_error)){
         std::cout << "Show error: " << show_error << std::endl;
         if (show_error) {
-            Eigen::VectorXd err = vertex_errors(Vr, doosabin_->makeMesh());
-            polyscope::getSurfaceMesh("Do-Sabin Subdiv Surface")->addVertexScalarQuantity("error", err)->setEnabled(true);
+            recalc_error = true;
         }
     }
 
+    if (update_mesh) {
+        std::vector<std::vector<int>> F = transform_faces(mesh_cur);
+        auto sds = polyscope::registerSurfaceMesh("Subdivision Surface", mesh_cur.positions, F);
+    }
+    if (recalc_error) {
+        Eigen::VectorXd err = vertex_errors(Vr, mesh_cur);
+        polyscope::getSurfaceMesh("Subdivision Surface")->addVertexScalarQuantity("error", err)->setEnabled(true);
+    }
 }
 
 
 int main(int argc, char *argv[])
 {
 
-    obj_mesh mesh;
     std::string mesh_path = "../models/tetrahedron.obj";
     if (argc > 1) mesh_path = argv[1];
-	loadObj(mesh_path, mesh);
-	doosabin_->loadMesh(mesh);
-    std::vector<std::vector<int>> F = transform_faces(mesh);
+	loadObj(mesh_path, mesh_init);
+
+    mesh_cur = mesh_init;
+	subdivision_->loadMesh(mesh_cur);
+    std::vector<std::vector<int>> F = transform_faces(mesh_cur);
 
     if (argc > 2){
         igl::readOBJ(argv[2],Vr,Fr);
     }
-
-/*
-    int n = 4;
-    int m = 5;
-    Eigen::MatrixXd CP(n*m,3);
-    Eigen::MatrixXi CPquads((n-1)*(m-1),4);
-    for (int i=0; i<n; i++) {
-        for (int j=0; j<m; j++) {
-            CP.row(i*m+j) = Eigen::RowVector3d(-0.5 + (1./n)*i, -0.5 + (1./m)*j, 0.1*sin(2*i*M_PI/n)*sin(2*j*M_PI/m) );
-
-            if ((i<n-1) && (j<m-1)){
-                auto idx = [n,m](int i, int j) {return i*m+j;};
-                CPquads.row(i*(m-1)+j) = Eigen::RowVector4i(idx(i,j),idx(i+1,j),idx(i+1,j+1),idx(i,j+1));
-            }
-        }
-    }
-    
-    // Eigen::MatrixXd Vb;
-    // Eigen::MatrixXi Fb;
-    // igl::triangulated_grid(10, 10, Vb, Fb);
-
-    obj_mesh mesh;
-    to_obj_mesh(CP, CPquads, mesh);
-	doosabin_.loadMesh(mesh);
-    std::vector<std::vector<int>> F = transform_faces(mesh);
-
-    */
-
-    // -----------------------------
-    // --------- POLYSCOPE ---------
-    // -----------------------------
 
     polyscope::init();
     polyscope::view::upDir = polyscope::UpDir::ZUp;
     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
     polyscope::options::shadowBlurIters = 6;
 
-    auto pc = polyscope::registerSurfaceMesh("Do-Sabin Subdiv Surface", mesh.positions, F);
+    auto pc = polyscope::registerSurfaceMesh("Subdivision Surface", mesh_cur.positions, F);
 
     if (Vr.rows() > 0) {
         polyscope::registerSurfaceMesh("Reference Surface", Vr, Fr);
     }
-
-    // polyscope::registerSurfaceMesh("Control Mesh", CP, CPquads);
 
     polyscope::state::userCallback = myCallback;
 
