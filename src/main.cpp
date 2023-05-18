@@ -6,6 +6,8 @@
 #include <igl/triangulated_grid.h>
 #include <igl/readOBJ.h>
 #include <igl/gaussian_curvature.h>
+#include <igl/octree.h>
+#include <igl/knn.h>
 
 #include <Eigen/Dense>
 #include <glm/glm.hpp>
@@ -17,6 +19,14 @@ Subdivision *subdivision_ = new Doosabin2Subdivision();
 
 Eigen::MatrixXd Vr;
 Eigen::MatrixXi Fr;
+
+// octree: (stores reference mesh positions for fast distance computation)
+struct octree{
+    std::vector<std::vector<int>> point_indices;
+    Eigen::MatrixXi CH;
+    Eigen::MatrixXd CN;
+    Eigen::VectorXd   W;
+} tree;
 
 bool show_error = false;
 
@@ -52,15 +62,14 @@ void to_obj_mesh(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F, obj_mesh &_
 
 Eigen::VectorXd vertex_errors(const Eigen::MatrixXd &Vr, const obj_mesh &mesh) {
     Eigen::VectorXd errors = Eigen::VectorXd::Zero(mesh.positions.size());
-
-    // Eigen::MatrixXd ref_test(1,3);
-    // ref_test.row(0) = Eigen::RowVector3d(mesh.positions[0][0],mesh.positions[0][1],mesh.positions[0][2]);
-    // for ( int i=0; i<5; i++) ref_test.row(i) = Eigen::RowVector3d(2.,0.,0.);
-    for (int i=0; i<mesh.positions.size(); i++) {
-        Eigen::Vector3d p(mesh.positions[i][0],mesh.positions[i][1],mesh.positions[i][2]);
-        errors[i] = (Vr.array().rowwise() - p.transpose().array()).rowwise().norm().minCoeff();
-        // errors[i] = (ref_test.array().rowwise() - p.transpose().array()).rowwise().norm().minCoeff();
+    Eigen::MatrixXd P(mesh.positions.size(),3);
+    for (int vi=0; vi<mesh.positions.size(); vi++) {
+        P.row(vi) = Eigen::Vector3d(mesh.positions[vi][0],mesh.positions[vi][1],mesh.positions[vi][2]);
     }
+    Eigen::MatrixXi I;
+    igl::knn(P,Vr,1,tree.point_indices, tree.CH, tree.CN, tree.W,I);
+    errors = (P - Vr(I.col(0),Eigen::all)).rowwise().norm();
+
     return errors;
 }
 
@@ -157,6 +166,11 @@ void myCallback() {
         Eigen::VectorXd K;
         igl::gaussian_curvature(Vt,Ft,K);
         polyscope::getSurfaceMesh("Subdivision Surface")->addVertexScalarQuantity("Gaussian Curvature", K)->setEnabled(true);
+
+        Eigen::VectorXd Kr;
+        igl::gaussian_curvature(Vr,Fr,Kr);
+        polyscope::getSurfaceMesh("Reference Surface")->addVertexScalarQuantity("Gaussian Curvature", Kr)->setEnabled(true);
+
     }
 }
 
@@ -166,11 +180,14 @@ int main(int argc, char *argv[])
 
     // load meshes
     std::string mesh_path           = "../../g1-quad-beziers/spot_tobi/out.obj";
-    std::string reference_mesh_path = "../../g1-quad-beziers/spot_tobi/spot_tobi_cc5.obj"; 
+    std::string reference_mesh_path = "../../g1-quad-beziers/spot_tobi/spot_final_tesselated.obj";  // spot_tobi_cc5.obj
     std::string our_cp_mesh_path   =  "../../g1-quad-beziers/spot_tobi/out_ours.obj"; 
 
 	loadObj(mesh_path, mesh_init);
     igl::readOBJ(reference_mesh_path,Vr,Fr);
+    igl::octree(Vr, tree.point_indices, tree.CH, tree.CN, tree.W);
+
+    std::cout << "Vr.shape: " << Vr.rows() << ", " << Vr.cols() << std::endl;
 
     Eigen::MatrixXd Vours;
     Eigen::MatrixXi Fours;
