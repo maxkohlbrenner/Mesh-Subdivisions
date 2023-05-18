@@ -5,6 +5,7 @@
 #include "polyscope/point_cloud.h"
 #include <igl/triangulated_grid.h>
 #include <igl/readOBJ.h>
+#include <igl/gaussian_curvature.h>
 
 #include <Eigen/Dense>
 #include <glm/glm.hpp>
@@ -109,10 +110,8 @@ void myCallback() {
     if (ImGui::Button("Subdivide")) {
         mesh_cur = subdivision_->execute(1);
         update_mesh = true;
-        if (show_error) {
-            recalc_error = true;
-        }
     }
+
 
     if (ImGui::Checkbox("Show Error" , &show_error)){
         std::cout << "Show error: " << show_error << std::endl;
@@ -124,10 +123,40 @@ void myCallback() {
     if (update_mesh) {
         std::vector<std::vector<int>> F = transform_faces(mesh_cur);
         auto sds = polyscope::registerSurfaceMesh("Subdivision Surface", mesh_cur.positions, F);
+
+        if (show_error) {
+            recalc_error = true;
+        }
     }
     if (recalc_error) {
         Eigen::VectorXd err = vertex_errors(Vr, mesh_cur);
         polyscope::getSurfaceMesh("Subdivision Surface")->addVertexScalarQuantity("error", err)->setEnabled(true);
+    }
+
+    if (ImGui::Button("Show Gaussian Curvature")) {
+
+        Eigen::MatrixXd Vt;
+        Eigen::MatrixXi Ft;
+        std::vector<std::vector<int>> F = transform_faces(mesh_cur);
+        int nv = mesh_cur.positions.size();
+        Vt.resize(nv,3);
+        for (int vi=0;vi<nv;vi++){
+           for (int d=0; d<3; d++) Vt(vi,d) = mesh_cur.positions[vi][d];
+        }
+        std::vector<Eigen::Vector3i> trifaces;
+        for (int fi=0; fi<F.size(); fi++){
+            for (int vj = 1; vj<F[fi].size()-1; vj++){
+                trifaces.push_back(Eigen::Vector3i(F[fi][0],F[fi][vj],F[fi][vj+1]));
+            }
+        }
+        Ft.resize(trifaces.size(),3);
+        for (int fi=0; fi<trifaces.size(); fi++){
+            Ft.row(fi) = trifaces[fi];
+        }
+
+        Eigen::VectorXd K;
+        igl::gaussian_curvature(Vt,Ft,K);
+        polyscope::getSurfaceMesh("Subdivision Surface")->addVertexScalarQuantity("Gaussian Curvature", K)->setEnabled(true);
     }
 }
 
