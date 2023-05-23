@@ -2,9 +2,11 @@
 #include "subdivision.h"
 
 #include "polyscope/surface_mesh.h"
+#include "polyscope/curve_network.h"
 #include "polyscope/point_cloud.h"
 #include <igl/triangulated_grid.h>
 #include <igl/readOBJ.h>
+// #include <igl/readOBJpoly.h>
 #include <igl/gaussian_curvature.h>
 #include <igl/octree.h>
 #include <igl/knn.h>
@@ -19,6 +21,11 @@ Subdivision *subdivision_ = new Doosabin2Subdivision();
 
 Eigen::MatrixXd Vr;
 Eigen::MatrixXi Fr;
+double bbx_diagonal;
+
+
+int step = -1;
+std::vector<std::vector<polyscope::Structure*>> structures;
 
 // octree: (stores reference mesh positions for fast distance computation)
 struct octree{
@@ -83,6 +90,19 @@ static void HelpMarker(const char* desc)
         ImGui::TextUnformatted(desc);
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
+    }
+}
+
+void update_struct_visibility(int i){
+    for (int si=0; si<structures.size(); si++){
+        for (auto sn: structures[si]){
+            sn->setEnabled(false);
+        }
+    }
+
+    for (int si=0; si<structures.size(); si++){
+        bool enabled = (si == i);
+        if (enabled) for (auto sn: structures[si]) sn->setEnabled(true);
     }
 }
 
@@ -172,22 +192,78 @@ void myCallback() {
         polyscope::getSurfaceMesh("Reference Surface")->addVertexScalarQuantity("Gaussian Curvature", Kr)->setEnabled(true);
 
     }
+
+
+    if (step == -1) {
+            if (ImGui::Button("Init animation")) {
+                step = 0;
+                update_struct_visibility(step);
+            }
+    } else {
+            if (ImGui::Button("Step")) {
+                if (step < structures.size()-1){
+                    step++;
+                } else {
+                    step = 0;
+                }
+                update_struct_visibility(step);
+            }
+    }
 }
 
+
+void edge_network_from_quadmesh(const Eigen::MatrixXi &F, Eigen::MatrixXi &E){
+
+    E.resize(4*F.rows(),2);
+    for (int fi=0; fi<F.rows();fi++) for (int vi=0; vi<4; vi++) E.row(4*fi+vi) = Eigen::RowVector2i(F(fi,vi),F(fi,(vi+1)%4));
+}
+
+void patch_edge_network_from_quadmesh(const Eigen::MatrixXi &F, Eigen::MatrixXi &E){
+
+    E.resize(8*F.rows(),2);
+    for (int fi=0; fi<F.rows();fi++){
+            Eigen::Vector4i f = F.row(fi);
+
+            E.row(8*fi+0)   = Eigen::RowVector2i(f(0),    f(0)+3);
+            E.row(8*fi+1)   = Eigen::RowVector2i(f(0)+3,  f(1)  );
+            E.row(8*fi+2)   = Eigen::RowVector2i(f(1),    f(1)+1);
+            E.row(8*fi+3)   = Eigen::RowVector2i(f(1)+1,  f(2)  );
+            E.row(8*fi+4)   = Eigen::RowVector2i(f(2),    f(3)+3);
+            E.row(8*fi+5)   = Eigen::RowVector2i(f(3)+3,  f(3)  );
+            E.row(8*fi+6)   = Eigen::RowVector2i(f(3),    f(0)+1);
+            E.row(8*fi+7)   = Eigen::RowVector2i(f(0)+1,  f(0)  );
+    }
+}
 
 int main(int argc, char *argv[])
 {
 
     // load meshes
     std::string mesh_path           = "../../g1-quad-beziers/spot_tobi/out.obj";
-    std::string reference_mesh_path = "../../g1-quad-beziers/spot_tobi/spot_final_tesselated.obj";  // spot_tobi_cc5.obj
+    std::string reference_mesh_path = "../../g1-quad-beziers/spot_tobi/spot_tesselated.obj";  // spot_tobi_cc5.obj
     std::string our_cp_mesh_path   =  "../../g1-quad-beziers/spot_tobi/out_ours.obj"; 
+    std::string bctrl_quadmesh_path      =  "../../g1-quad-beziers/spot_tobi/spot_bctrl_quadmesh.obj"; 
+    std::string spot_quadmesh_path      =  "../../g1-quad-beziers/spot_tobi/spot_bctrl_patches.obj"; 
+    Eigen::MatrixXd Vbctrl;
+    Eigen::MatrixXi Fbctrl;
+    igl::readOBJ(bctrl_quadmesh_path, Vbctrl, Fbctrl);
+    Eigen::MatrixXi Ebctrl;
+    edge_network_from_quadmesh(Fbctrl,Ebctrl);
+
+    Eigen::MatrixXd V_spot_quadmesh;
+    Eigen::MatrixXi F_spot_quadmesh, E_spot_quadmesh;
+    igl::readOBJ(spot_quadmesh_path, V_spot_quadmesh, F_spot_quadmesh);
+    patch_edge_network_from_quadmesh(F_spot_quadmesh, E_spot_quadmesh);
+    Eigen::MatrixXd Vpatches = V_spot_quadmesh( (Eigen::VectorXi) E_spot_quadmesh.reshaped(E_spot_quadmesh.rows()*2,1), Eigen::all);
+    Eigen::MatrixXi Epatches(E_spot_quadmesh.rows(),2); for (int i=0; i<E_spot_quadmesh.rows(); i++) Epatches.row(i) = Eigen::RowVector2i(2*i,2*i+1);
+
 
 	loadObj(mesh_path, mesh_init);
     igl::readOBJ(reference_mesh_path,Vr,Fr);
     igl::octree(Vr, tree.point_indices, tree.CH, tree.CN, tree.W);
 
-    std::cout << "Vr.shape: " << Vr.rows() << ", " << Vr.cols() << std::endl;
+    bbx_diagonal = (Vr.colwise().maxCoeff() - Vr.colwise().minCoeff()).norm();
+    std::cout << "bbx_diagonal: " << bbx_diagonal << std::endl;
 
     Eigen::MatrixXd Vours;
     Eigen::MatrixXi Fours;
@@ -198,18 +274,62 @@ int main(int argc, char *argv[])
     std::vector<std::vector<int>> F = transform_faces(mesh_cur);
     std::vector<std::vector<int>> F_init = transform_faces(mesh_init);
 
+    // Eigen::MatrixXi E_subdiv;
+    // edge_network_from_quadmesh(F_init,E_subdiv);
+
     polyscope::init();
     polyscope::view::upDir = polyscope::UpDir::ZUp;
     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
     polyscope::options::shadowBlurIters = 6;
 
-    auto pc = polyscope::registerSurfaceMesh("Subdivision Surface", mesh_cur.positions, F);
-    polyscope::registerSurfaceMesh("Reference Surface", Vr, Fr);
 
-    polyscope::registerPointCloud("K-Surf Control Points", Vours);
+    std::vector<polyscope::Structure *> slist;
+    // K-Surface
+    auto rs = polyscope::registerSurfaceMesh("Reference Surface", Vr, Fr);
+    rs->setSurfaceColor(glm::vec3(227/255., 156/255., 38/255.));
+    auto cp = polyscope::registerPointCloud("K-Surf Control Points", Vours);
+    cp->setPointColor(glm::vec3(28/255., 110/255., 227/255.));
+    slist.push_back((polyscope::Structure *) rs);
+    slist.push_back((polyscope::Structure *) cp);
+    structures.push_back(slist);
+
+    slist.clear();
+    slist.push_back(rs);
+    slist.push_back(cp);
+    auto sq = polyscope::registerCurveNetwork("Spot Quadmesh", Vpatches, Epatches)->setRadius(0.002);
+    sq->setRadius(0.0015);
+    slist.push_back((polyscope::Structure *) sq);
+    structures.push_back(slist);
+
+    // conversion: 
+    auto bmc = polyscope::registerPointCloud("Bezier Middle Ctrl", mesh_init.positions);
+    auto bac = polyscope::registerPointCloud("Bezier Ctrl Points", Vbctrl);
+    bac->setPointRadius(0.003);
+    bmc->setPointColor(glm::vec3(106/255., 28/255., 227/255.));
+    auto bcm = polyscope::registerCurveNetwork("Bezier Control Mesh", Vbctrl, Ebctrl)->setRadius(0.001);
+    bcm->setColor(bmc->getPointColor());
+
+    slist.clear();
+    slist.push_back(rs);
+    slist.push_back(sq);
+    slist.push_back((polyscope::Structure *) bcm);
+    slist.push_back((polyscope::Structure *) bmc);
+    slist.push_back((polyscope::Structure *) bac);
+    structures.push_back(slist);
+
+
+    // final subdivision surface
+    slist.clear();
+    slist.push_back(bmc);
+    auto sds = polyscope::registerSurfaceMesh("Subdivision Surface", mesh_cur.positions, F);
+    sds->setSurfaceColor(glm::vec3(28/255., 110/255., 227/255.));
+    slist.push_back((polyscope::Structure *) sds);
+
+    // auto scp = polyscope::registerCurveNetwork("SD control grid", mesh_init.positions, E_subdiv);
+    // slist.push_back((polyscope::Structure *) scp);
+    structures.push_back(slist);
 
     polyscope::state::userCallback = myCallback;
-
     polyscope::show();
 
 	return 0;
