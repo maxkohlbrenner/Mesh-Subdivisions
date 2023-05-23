@@ -1,5 +1,6 @@
 ﻿#include "obj_mesh.h"
 #include "subdivision.h"
+#include "nanoflann.hpp"
 
 #include "polyscope/surface_mesh.h"
 #include "polyscope/curve_network.h"
@@ -8,7 +9,7 @@
 #include <igl/readOBJ.h>
 // #include <igl/readOBJpoly.h>
 #include <igl/gaussian_curvature.h>
-#include <igl/octree.h>
+// #include <igl/octree.h>
 #include <igl/knn.h>
 
 #include <Eigen/Dense>
@@ -27,6 +28,7 @@ double bbx_diagonal;
 int step = -1;
 std::vector<std::vector<polyscope::Structure*>> structures;
 
+/*
 // octree: (stores reference mesh positions for fast distance computation)
 struct octree{
     std::vector<std::vector<int>> point_indices;
@@ -34,6 +36,12 @@ struct octree{
     Eigen::MatrixXd CN;
     Eigen::VectorXd   W;
 } tree;
+*/
+
+
+// nanoflann::KDTreeEigenMatrixAdaptor<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>> flanntree;
+using my_kd_tree_t = nanoflann::KDTreeEigenMatrixAdaptor<Eigen::MatrixXd>;
+my_kd_tree_t *mytree;
 
 bool show_error = false;
 
@@ -69,13 +77,38 @@ void to_obj_mesh(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F, obj_mesh &_
 
 Eigen::VectorXd vertex_errors(const Eigen::MatrixXd &Vr, const obj_mesh &mesh) {
     Eigen::VectorXd errors = Eigen::VectorXd::Zero(mesh.positions.size());
+    /*
     Eigen::MatrixXd P(mesh.positions.size(),3);
     for (int vi=0; vi<mesh.positions.size(); vi++) {
         P.row(vi) = Eigen::Vector3d(mesh.positions[vi][0],mesh.positions[vi][1],mesh.positions[vi][2]);
     }
-    Eigen::MatrixXi I;
-    igl::knn(P,Vr,1,tree.point_indices, tree.CH, tree.CN, tree.W,I);
-    errors = (P - Vr(I.col(0),Eigen::all)).rowwise().norm();
+    */
+    for ( int i=0; i<mesh.positions.size(); i++) {
+
+        std::vector<double> query_pt(3);
+        Eigen::RowVector3d p;
+        for (int d=0;d<3;d++){
+            query_pt[d] = mesh.positions[i][d];
+            p(d)        = mesh.positions[i][d];
+        }
+
+        int num_results = 1;
+        std::vector<long unsigned int> ret_indexes(num_results);
+        std::vector<double>  out_dists_sqr(num_results);
+        nanoflann::KNNResultSet<double> resultSet(1);
+        resultSet.init(&ret_indexes[0], &out_dists_sqr[0]);
+        mytree->index_->findNeighbors(resultSet, &query_pt[0]);
+        
+        /*
+        std::cout << "Err: " << std::endl;
+        std::cout << ret_indexes[0] << std::endl;
+        std::cout << sqrt(out_dists_sqr[0]) << std::endl;
+        std::cout << (p - Vr.row(ret_indexes[0])).norm() << std::endl;
+        */
+        errors(i) = sqrt(out_dists_sqr[0]);
+    }
+    // igl::knn(P,Vr,1,tree.point_indices, tree.CH, tree.CN, tree.W,I);
+    // errors = (P - Vr(I.col(0),Eigen::all)).rowwise().norm();
 
     return errors;
 }
@@ -238,12 +271,41 @@ void patch_edge_network_from_quadmesh(const Eigen::MatrixXi &F, Eigen::MatrixXi 
 int main(int argc, char *argv[])
 {
 
+    // std::string folder = "spot_new";
+    // std::string prefix = "spot_new";
+    std::string folder = "spot_tobi";
+    std::string prefix = "spot";
+
     // load meshes
+    /*
     std::string mesh_path           = "../../g1-quad-beziers/spot_tobi/out.obj";
     std::string reference_mesh_path = "../../g1-quad-beziers/spot_tobi/spot_tesselated.obj";  // spot_tobi_cc5.obj
     std::string our_cp_mesh_path   =  "../../g1-quad-beziers/spot_tobi/out_ours.obj"; 
     std::string bctrl_quadmesh_path      =  "../../g1-quad-beziers/spot_tobi/spot_bctrl_quadmesh.obj"; 
     std::string spot_quadmesh_path      =  "../../g1-quad-beziers/spot_tobi/spot_bctrl_patches.obj"; 
+    */
+
+    std::string mesh_path           = "../../g1-quad-beziers/" + folder + "/" + "out.obj"; 
+    std::string reference_mesh_path = "../../g1-quad-beziers/" + folder + "/" + prefix + "_final_tesselated.obj"; 
+    std::string our_cp_mesh_path    = "../../g1-quad-beziers/" + folder + "/" + "out_ours.obj"; 
+    std::string bctrl_quadmesh_path = "../../g1-quad-beziers/" + folder + "/" + prefix + "_bctrl_quadmesh.obj"; 
+    std::string spot_quadmesh_path  = "../../g1-quad-beziers/" + folder + "/" + prefix + "_bctrl_patches.obj"; 
+
+    if (false){
+            mesh_path               = "../../g1-quad-beziers/egg/out.obj";
+            reference_mesh_path     = "../../g1-quad-beziers/egg/egg_final_tesselated.obj";
+            our_cp_mesh_path        =  "../../g1-quad-beziers/egg/out_ours.obj"; 
+            bctrl_quadmesh_path     =  "../../g1-quad-beziers/egg/egg_bctrl_quadmesh.obj"; 
+            spot_quadmesh_path      =  "../../g1-quad-beziers/egg/egg_bctrl_patches.obj"; 
+    }
+    if (false){
+            mesh_path               = "../../g1-quad-beziers/egg_simpler/out.obj";
+            reference_mesh_path     = "../../g1-quad-beziers/egg_simpler/egg_simpler_final_tesselated.obj";
+            our_cp_mesh_path        =  "../../g1-quad-beziers/egg_simpler/out_ours.obj"; 
+            bctrl_quadmesh_path     =  "../../g1-quad-beziers/egg_simpler/egg_simpler_bctrl_quadmesh.obj"; 
+            spot_quadmesh_path      =  "../../g1-quad-beziers/egg_simpler/egg_simpler_bctrl_patches.obj"; 
+    }
+
     Eigen::MatrixXd Vbctrl;
     Eigen::MatrixXi Fbctrl;
     igl::readOBJ(bctrl_quadmesh_path, Vbctrl, Fbctrl);
@@ -257,17 +319,25 @@ int main(int argc, char *argv[])
     Eigen::MatrixXd Vpatches = V_spot_quadmesh( (Eigen::VectorXi) E_spot_quadmesh.reshaped(E_spot_quadmesh.rows()*2,1), Eigen::all);
     Eigen::MatrixXi Epatches(E_spot_quadmesh.rows(),2); for (int i=0; i<E_spot_quadmesh.rows(); i++) Epatches.row(i) = Eigen::RowVector2i(2*i,2*i+1);
 
-
 	loadObj(mesh_path, mesh_init);
     igl::readOBJ(reference_mesh_path,Vr,Fr);
-    igl::octree(Vr, tree.point_indices, tree.CH, tree.CN, tree.W);
 
+    std::cout << "Vr.shape: " << Vr.rows() << ", " << Vr.cols() << std::endl;
+    std::cout << "Vr.block: " << Vr.block(Vr.rows()-1-12,0,12,3) << std::endl;
     bbx_diagonal = (Vr.colwise().maxCoeff() - Vr.colwise().minCoeff()).norm();
     std::cout << "bbx_diagonal: " << bbx_diagonal << std::endl;
+
+    // igl::octree(Vr, tree.point_indices, tree.CH, tree.CN, tree.W);
+    // std::cout << "... built octree" << std::endl;
+    my_kd_tree_t t(3,std::cref(Vr),10);
+    mytree = &t;
+    std::cout << "... built kdtree" << std::endl;
 
     Eigen::MatrixXd Vours;
     Eigen::MatrixXi Fours;
     igl::readOBJ(our_cp_mesh_path,Vours,Fours);
+
+    std::cout << "Vours.shape: " << Vours.rows() << ", " << Vours.cols() << std::endl;
 
     mesh_cur = mesh_init;
 	subdivision_->loadMesh(mesh_cur);
