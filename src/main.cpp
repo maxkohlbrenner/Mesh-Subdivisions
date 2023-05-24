@@ -28,6 +28,8 @@ double bbx_diagonal;
 int step = -1;
 std::vector<std::vector<polyscope::Structure*>> structures;
 
+double rotangle = 360.;
+
 /*
 // octree: (stores reference mesh positions for fast distance computation)
 struct octree{
@@ -208,7 +210,7 @@ void myCallback() {
         std::vector<Eigen::Vector3i> trifaces;
         for (int fi=0; fi<F.size(); fi++){
             for (int vj = 1; vj<F[fi].size()-1; vj++){
-                trifaces.push_back(Eigen::Vector3i(F[fi][0],F[fi][vj],F[fi][vj+1]));
+                trifaces.push_back(Eigen::Vector3i(F[fi][0],F[fi][vj+1],F[fi][vj]));
             }
         }
         Ft.resize(trifaces.size(),3);
@@ -216,13 +218,22 @@ void myCallback() {
             Ft.row(fi) = trifaces[fi];
         }
 
+
         Eigen::VectorXd K;
         igl::gaussian_curvature(Vt,Ft,K);
         polyscope::getSurfaceMesh("Subdivision Surface")->addVertexScalarQuantity("Gaussian Curvature", K)->setEnabled(true);
+        std::cout << "SD: K " << std::endl;
+        std::cout << K.minCoeff() << ", " << K.mean() << ", " << K.maxCoeff() << std::endl;
+
+        auto dbg = polyscope::registerSurfaceMesh("SD Tri, debug", Vt, Ft);
+        dbg ->addVertexScalarQuantity("Gaussian Curvature", K)->setEnabled(true);
 
         Eigen::VectorXd Kr;
         igl::gaussian_curvature(Vr,Fr,Kr);
         polyscope::getSurfaceMesh("Reference Surface")->addVertexScalarQuantity("Gaussian Curvature", Kr)->setEnabled(true);
+
+        std::cout << "KS: K " << std::endl;
+        std::cout << Kr.minCoeff() << ", " << Kr.mean() << ", " << Kr.maxCoeff() << std::endl;
 
     }
 
@@ -242,6 +253,24 @@ void myCallback() {
                 update_struct_visibility(step);
             }
     }
+
+    if (ImGui::Button("Rotate")) {
+        rotangle = 0.;
+    }
+
+    if (rotangle < 360) {
+        float step = 1.;
+        rotangle += step;
+        auto rs = polyscope::getSurfaceMesh("Reference Surface");
+        auto ds = polyscope::getSurfaceMesh("Subdivision Surface");
+        glm::mat4x4 T = rs->getTransform();
+        rs->setTransform(glm::rotate(T,glm::radians(step) ,glm::vec3(0.,0.,1.)));
+        ds->setTransform(glm::rotate(T,glm::radians(step) ,glm::vec3(0.,0.,1.)));
+    } else {
+        rotangle = 360;
+    }
+
+
 }
 
 
@@ -271,10 +300,10 @@ void patch_edge_network_from_quadmesh(const Eigen::MatrixXi &F, Eigen::MatrixXi 
 int main(int argc, char *argv[])
 {
 
-    // std::string folder = "spot_new";
-    // std::string prefix = "spot_new";
-    std::string folder = "spot_tobi";
-    std::string prefix = "spot";
+    std::string folder = "spot_new";
+    std::string prefix = "spot_new";
+    // std::string folder = "spot_tobi";
+    // std::string prefix = "spot";
 
     // load meshes
     /*
