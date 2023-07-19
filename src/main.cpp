@@ -7,6 +7,9 @@
 #include "polyscope/point_cloud.h"
 #include <igl/triangulated_grid.h>
 #include <igl/readOBJ.h>
+#include <igl/writeOBJ.h>
+#include <igl/massmatrix.h>
+#include <igl/invert_diag.h>
 // #include <igl/readOBJpoly.h>
 #include <igl/gaussian_curvature.h>
 // #include <igl/octree.h>
@@ -199,6 +202,8 @@ void myCallback() {
 
     if (ImGui::Button("Show Gaussian Curvature")) {
 
+        bool byarea = true;
+
         Eigen::MatrixXd Vt;
         Eigen::MatrixXi Ft;
         std::vector<std::vector<int>> F = transform_faces(mesh_cur);
@@ -221,6 +226,13 @@ void myCallback() {
 
         Eigen::VectorXd K;
         igl::gaussian_curvature(Vt,Ft,K);
+        Eigen::SparseMatrix<double> M,Minv;
+        if (byarea) {
+            igl::massmatrix(Vt,Ft,igl::MASSMATRIX_TYPE_DEFAULT,M);
+            igl::invert_diag(M,Minv);
+            K = (Minv*K).eval();
+        }
+
         polyscope::getSurfaceMesh("Subdivision Surface")->addVertexScalarQuantity("Gaussian Curvature", K)->setEnabled(true);
         std::cout << "SD: K " << std::endl;
         std::cout << K.minCoeff() << ", " << K.mean() << ", " << K.maxCoeff() << std::endl;
@@ -228,8 +240,15 @@ void myCallback() {
         auto dbg = polyscope::registerSurfaceMesh("SD Tri, debug", Vt, Ft);
         dbg ->addVertexScalarQuantity("Gaussian Curvature", K)->setEnabled(true);
 
+        igl::writeOBJ("mesh_ds.obj", Vt, Ft);
+
         Eigen::VectorXd Kr;
         igl::gaussian_curvature(Vr,Fr,Kr);
+        if (byarea) {
+            igl::massmatrix(Vr,Fr,igl::MASSMATRIX_TYPE_DEFAULT,M);
+            igl::invert_diag(M,Minv);
+            Kr = (Minv*Kr).eval();
+        }
         polyscope::getSurfaceMesh("Reference Surface")->addVertexScalarQuantity("Gaussian Curvature", Kr)->setEnabled(true);
 
         std::cout << "KS: K " << std::endl;
